@@ -15,7 +15,12 @@
     "commands": [{
       "command": "doit.helloWorld",
       "title": "Hello World"
-    }]
+    },
+    {
+      "command": "extension.openSearchTab",
+      "title": "Open Search Tab"
+    }
+  ]
   },
   "scripts": {
     "lint": "eslint .",

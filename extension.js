@@ -1,36 +1,107 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 const vscode = require('vscode');
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
-
-/**
- * @param {vscode.ExtensionContext} context
- */
 function activate(context) {
+  console.log('Extension "vscode-extension-example" is now active!');
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "doit" is now active!');
+  let disposable = vscode.commands.registerCommand('extension.openSearchTab', function () {
+    // Create Webview Panel
+    const panel = vscode.window.createWebviewPanel(
+      'searchTab', // Unique ID for the webview
+      'Search Tab', // Tab Title
+      vscode.ViewColumn.One, // Where to display the webview (in the left panel)
+      {
+        enableScripts: true // Allow scripts in the webview
+      }
+    );
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with  registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('doit.helloWorld', function () {
-		// The code you place here will be executed every time your command is executed
+    // Set the HTML content of the webview
+    panel.webview.html = getWebviewContent();
 
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from doIt!');
-	});
+    // Listen for messages from the webview (button click)
+    panel.webview.onDidReceiveMessage(
+      async (message) => {
+        if (message.command === 'search') {
+          const input = message.text.trim().toLowerCase();
 
-	context.subscriptions.push(disposable);
+          try {
+            switch (input) {
+              case 'create':
+                // Create a new file
+                const createUri = vscode.Uri.file(`${vscode.workspace.rootPath}/newFile.txt`);
+                await vscode.workspace.fs.writeFile(createUri, Buffer.from('New file content'));
+                vscode.window.showInformationMessage('File created!');
+                break;
+
+              case 'read':
+                // Read the content of the file
+                const readUri = vscode.Uri.file(`${vscode.workspace.rootPath}/newFile.txt`);
+                const content = await vscode.workspace.fs.readFile(readUri);
+                vscode.window.showInformationMessage(`File content: ${content.toString()}`);
+                break;
+
+              case 'delete':
+                // Delete the file
+                const deleteUri = vscode.Uri.file(`${vscode.workspace.rootPath}/newFile.txt`);
+                await vscode.workspace.fs.delete(deleteUri);
+                vscode.window.showInformationMessage('File deleted!');
+                break;
+
+              case 'list':
+                // List contents of the folder
+                const folderUri = vscode.Uri.file(vscode.workspace.rootPath);
+                const files = await vscode.workspace.fs.readDirectory(folderUri);
+                vscode.window.showInformationMessage(
+                  `Folder contents: ${files.map((file) => file[0]).join(', ')}`
+                );
+                break;
+
+              default:
+                vscode.window.showErrorMessage('Unknown command!');
+                break;
+            }
+          } catch (error) {
+            vscode.window.showErrorMessage(`Error: ${error.message}`);
+          }
+        }
+      },
+      undefined,
+      context.subscriptions
+    );
+  });
+
+  context.subscriptions.push(disposable);
 }
 
-// This method is called when your extension is deactivated
+function getWebviewContent() {
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Search Tab</title>
+    </head>
+    <body>
+      <h1>Search Tab</h1>
+      <input type="text" id="searchInput" placeholder="Enter command (create, read, delete, list)" />
+      <button id="searchButton">Submit</button>
+
+      <script>
+        const vscode = acquireVsCodeApi();
+
+        document.getElementById('searchButton').addEventListener('click', () => {
+          const input = document.getElementById('searchInput').value.trim();
+          vscode.postMessage({ command: 'search', text: input });
+        });
+      </script>
+    </body>
+    </html>
+  `;
+}
+
 function deactivate() {}
 
 module.exports = {
-	activate,
-	deactivate
-}
+  activate,
+  deactivate
+};
