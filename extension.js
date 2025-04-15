@@ -1,24 +1,25 @@
 const vscode = require('vscode');
 const axios = require('axios');
 const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 /**
  * @param {vscode.ExtensionContext} context
  */
 function activate(context) {
-  // Create a named output channel
   const outputChannel = vscode.window.createOutputChannel("Gemini Executor");
 
   const disposable = vscode.commands.registerCommand('extension.geminiSearch', async () => {
     const input = await vscode.window.showInputBox({
-      placeHolder: 'What do you want to do? (e.g., create sample.java)'
+      placeHolder: 'What do you want to do? (e.g., create a Flask app)'
     });
 
     if (!input) return;
 
     try {
-      outputChannel.clear(); // Clear previous output
-      outputChannel.show(); // Show the output channel to the user
+      outputChannel.clear();
+      outputChannel.show();
       outputChannel.appendLine(`User input: ${input}`);
 
       const response = await axios.post('http://localhost:5000/process', { query: input });
@@ -28,15 +29,7 @@ function activate(context) {
         data = JSON.parse(data);
       }
 
-      outputChannel.appendLine(`Received response from server: ${JSON.stringify(data, null, 2)}`);
-
-      const commands = data.commands;
-
-      if (!commands || commands.length === 0) {
-        vscode.window.showInformationMessage('No commands received.');
-        outputChannel.appendLine('No commands received.');
-        return;
-      }
+      outputChannel.appendLine(`Server response:\n${JSON.stringify(data, null, 2)}`);
 
       const workspaceFolders = vscode.workspace.workspaceFolders;
       const workspacePath = workspaceFolders ? workspaceFolders[0].uri.fsPath : undefined;
@@ -48,28 +41,38 @@ function activate(context) {
         return;
       }
 
+      // Handle file creation
+      if (Array.isArray(data.files)) {
+        data.files.forEach(file => {
+          const filePath = path.join(workspacePath, file.filename);
+          fs.writeFileSync(filePath, file.content, 'utf8');
+          outputChannel.appendLine(`✅ Created file: ${file.filename}`);
+        });
+      }
+
+      // Handle command execution
+      const commands = data.commands || [];
+      if (commands.length === 0 && (!data.files || data.files.length === 0)) {
+        vscode.window.showInformationMessage('Nothing to execute or create.');
+        outputChannel.appendLine('No commands or files received.');
+        return;
+      }
+
       commands.forEach(cmd => {
         outputChannel.appendLine(`Executing command: "${cmd}" in ${workspacePath}`);
         exec(cmd, { cwd: workspacePath }, (error, stdout, stderr) => {
           if (error) {
-            outputChannel.appendLine(`❌ Error executing "${cmd}": ${error.message}`);
+            outputChannel.appendLine(`❌ Error: ${error.message}`);
             vscode.window.showErrorMessage(`Error: ${error.message}`);
             return;
           }
-
-          if (stderr) {
-            outputChannel.appendLine(`⚠️ stderr: ${stderr}`);
-          }
-
-          if (stdout) {
-            outputChannel.appendLine(`✅ Output: ${stdout}`);
-          }
-
+          if (stderr) outputChannel.appendLine(`⚠️ stderr: ${stderr}`);
+          if (stdout) outputChannel.appendLine(`✅ Output: ${stdout}`);
           outputChannel.appendLine(`--- Finished "${cmd}" ---\n`);
         });
       });
 
-      vscode.window.showInformationMessage('Commands execution started. See "Gemini Executor" output.');
+      vscode.window.showInformationMessage('Gemini execution complete. See "Gemini Executor" output.');
     } catch (error) {
       const errMsg = `Failed to contact server: ${error.message}`;
       vscode.window.showErrorMessage(errMsg);
