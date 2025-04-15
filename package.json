@@ -1,38 +1,21 @@
 {
-  "name": "doit",
-  "displayName": "doIt",
-  "description": "A visual studio code extension used to automate the process of project creation and building based on the given instructions by integrating it with chatgpt",
+  "name": "gemini-command-runner",
+  "displayName": "Gemini Command Runner",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.95.0"
+    "vscode": "^1.60.0"
   },
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [],
-  "main": "./extension.js",
+  "activationEvents": ["onCommand:extension.geminiSearch"],
+  "main": "extension.js",
   "contributes": {
-    "commands": [{
-      "command": "doit.helloWorld",
-      "title": "Hello World"
-    },
-    {
-      "command": "extension.openSearchTab",
-      "title": "Open Search Tab"
-    }
-  ]
+    "commands": [
+      {
+        "command": "extension.geminiSearch",
+        "title": "Gemini: Search Command"
+      }
+    ]
   },
-  "scripts": {
-    "lint": "eslint .",
-    "pretest": "npm run lint",
-    "test": "vscode-test"
-  },
-  "devDependencies": {
-    "@types/vscode": "^1.95.0",
-    "@types/mocha": "^10.0.9",
-    "@types/node": "20.x",
-    "eslint": "^9.13.0",
-    "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.4.1"
+  "dependencies": {
+    "axios": "^1.6.0"
   }
 }

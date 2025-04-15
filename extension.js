@@ -1,102 +1,83 @@
 const vscode = require('vscode');
+const axios = require('axios');
+const { exec } = require('child_process');
 
+/**
+ * @param {vscode.ExtensionContext} context
+ */
 function activate(context) {
-  console.log('Extension "vscode-extension-example" is now active!');
+  // Create a named output channel
+  const outputChannel = vscode.window.createOutputChannel("Gemini Executor");
 
-  let disposable = vscode.commands.registerCommand('extension.openSearchTab', function () {
-    // Create Webview Panel
-    const panel = vscode.window.createWebviewPanel(
-      'searchTab', // Unique ID for the webview
-      'Search Tab', // Tab Title
-      vscode.ViewColumn.One, // Where to display the webview (in the left panel)
-      {
-        enableScripts: true // Allow scripts in the webview
+  const disposable = vscode.commands.registerCommand('extension.geminiSearch', async () => {
+    const input = await vscode.window.showInputBox({
+      placeHolder: 'What do you want to do? (e.g., create sample.java)'
+    });
+
+    if (!input) return;
+
+    try {
+      outputChannel.clear(); // Clear previous output
+      outputChannel.show(); // Show the output channel to the user
+      outputChannel.appendLine(`User input: ${input}`);
+
+      const response = await axios.post('http://localhost:5000/process', { query: input });
+      let data = response.data;
+
+      if (typeof data === 'string') {
+        data = JSON.parse(data);
       }
-    );
 
-    // Set the HTML content of the webview
-    panel.webview.html = getWebviewContent();
+      outputChannel.appendLine(`Received response from server: ${JSON.stringify(data, null, 2)}`);
 
-    // Listen for messages from the webview (button click)
-    panel.webview.onDidReceiveMessage(
-      async (message) => {
-        if (message.command === 'search') {
-          const input = message.text.trim().toLowerCase();
+      const commands = data.commands;
 
-          try {
-            switch (input) {
-              case 'create':
-                // Create a new file
-                const createUri = vscode.Uri.file(`${vscode.workspace.rootPath}/newFile.txt`);
-                await vscode.workspace.fs.writeFile(createUri, Buffer.from('New file content'));
-                vscode.window.showInformationMessage('File created!');
-                break;
+      if (!commands || commands.length === 0) {
+        vscode.window.showInformationMessage('No commands received.');
+        outputChannel.appendLine('No commands received.');
+        return;
+      }
 
-              case 'read':
-                // Read the content of the file
-                const readUri = vscode.Uri.file(`${vscode.workspace.rootPath}/newFile.txt`);
-                const content = await vscode.workspace.fs.readFile(readUri);
-                vscode.window.showInformationMessage(`File content: ${content.toString()}`);
-                break;
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      const workspacePath = workspaceFolders ? workspaceFolders[0].uri.fsPath : undefined;
 
-              case 'delete':
-                // Delete the file
-                const deleteUri = vscode.Uri.file(`${vscode.workspace.rootPath}/newFile.txt`);
-                await vscode.workspace.fs.delete(deleteUri);
-                vscode.window.showInformationMessage('File deleted!');
-                break;
+      if (!workspacePath) {
+        const msg = 'No workspace folder found. Please open a folder in VS Code.';
+        vscode.window.showErrorMessage(msg);
+        outputChannel.appendLine(msg);
+        return;
+      }
 
-              case 'list':
-                // List contents of the folder
-                const folderUri = vscode.Uri.file(vscode.workspace.rootPath);
-                const files = await vscode.workspace.fs.readDirectory(folderUri);
-                vscode.window.showInformationMessage(
-                  `Folder contents: ${files.map((file) => file[0]).join(', ')}`
-                );
-                break;
-
-              default:
-                vscode.window.showErrorMessage('Unknown command!');
-                break;
-            }
-          } catch (error) {
+      commands.forEach(cmd => {
+        outputChannel.appendLine(`Executing command: "${cmd}" in ${workspacePath}`);
+        exec(cmd, { cwd: workspacePath }, (error, stdout, stderr) => {
+          if (error) {
+            outputChannel.appendLine(`❌ Error executing "${cmd}": ${error.message}`);
             vscode.window.showErrorMessage(`Error: ${error.message}`);
+            return;
           }
-        }
-      },
-      undefined,
-      context.subscriptions
-    );
+
+          if (stderr) {
+            outputChannel.appendLine(`⚠️ stderr: ${stderr}`);
+          }
+
+          if (stdout) {
+            outputChannel.appendLine(`✅ Output: ${stdout}`);
+          }
+
+          outputChannel.appendLine(`--- Finished "${cmd}" ---\n`);
+        });
+      });
+
+      vscode.window.showInformationMessage('Commands execution started. See "Gemini Executor" output.');
+    } catch (error) {
+      const errMsg = `Failed to contact server: ${error.message}`;
+      vscode.window.showErrorMessage(errMsg);
+      outputChannel.appendLine(`❌ ${errMsg}`);
+    }
   });
 
   context.subscriptions.push(disposable);
-}
-
-function getWebviewContent() {
-  return `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Search Tab</title>
-    </head>
-    <body>
-      <h1>Search Tab</h1>
-      <input type="text" id="searchInput" placeholder="Enter command (create, read, delete, list)" />
-      <button id="searchButton">Submit</button>
-
-      <script>
-        const vscode = acquireVsCodeApi();
-
-        document.getElementById('searchButton').addEventListener('click', () => {
-          const input = document.getElementById('searchInput').value.trim();
-          vscode.postMessage({ command: 'search', text: input });
-        });
-      </script>
-    </body>
-    </html>
-  `;
 }
 
 function deactivate() {}
